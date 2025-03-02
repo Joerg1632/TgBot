@@ -1,63 +1,71 @@
 import requests
 
-# Базовый URL для API Wildberries
-BASE_URL = "https://suppliers-api.wildberries.ru"
+# Функция получения данных о заказе по его номеру (orderId)
+def get_product_by_order_id(api_key, order_id):
+    url = f"https://suppliers-api.wildberries.ru/api/v3/orders/{order_id}"
+    headers = {"Authorization": api_key}
 
-def get_headers(api_key):
-    """
-    Возвращает заголовки для запросов к API Wildberries.
-    """
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        return None, f"Ошибка получения данных о заказе: {response.status_code} - {response.text}"
+
+    data = response.json()
+    if not data.get("orders"):
+        return None, "Заказ не найден"
+
+    order = data['orders'][0]
+    nm_id = order['skus'][0]['nmId']
+
+    product_info, error = get_product_info(nm_id)
+    if error:
+        return None, error
+
+    product_info['order_date'] = order['createdAt']  # Дата заказа
+    product_info['imtId'] = order['skus'][0]['imtId']  # добавляем imtId сразу
+    return product_info, None
+
+
+# Функция получения информации о товаре по nmId
+def get_product_info(nm_id):
+    url = "https://card.wb.ru/cards/v2/detail"
+    params = {"nm": nm_id}
+
+    response = requests.get(url, params=params)
+
+    if response.status_code != 200:
+        return None, f"Ошибка получения данных о товаре: {response.status_code}"
+
+    data = response.json()
+
+    if not data.get('data', {}).get('products'):
+        return None, "Товар не найден в Wildberries"
+
+    product = data['data']['products'][0]
+
     return {
-        'Authorization': api_key,
-        'Content-Type': 'application/json'
-    }
+        "nmId": nm_id,
+        "name": product['name'],
+        "category": product.get('subjName', 'Неизвестно'),
+        "brand": product['brand'],
+        "price": product['salePriceU'] / 100,
+        "old_price": product['priceU'] / 100,
+        "discount": product['sale'],
+        "link": f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx"
+    }, None
 
-def get_orders(api_key, date_from, date_to):
-    """
-    Получает список заказов за указанный период.
-    """
-    url = f"{BASE_URL}/api/v1/orders"
+
+def get_feedbacks(imt_id):
+    url = "https://feedbacks-api.wildberries.ru/api/v1/feedbacks"
     params = {
-        'dateFrom': date_from,  # Дата начала периода (в формате ГГГГ-ММ-ДД)
-        'dateTo': date_to       # Дата окончания периода (в формате ГГГГ-ММ-ДД)
+        "imtId": imt_id,  # теперь передаем корректный параметр
+        "take": 5,
+        "isAnswered": "false"
     }
-    headers = get_headers(api_key)
 
-    try:
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        return response.json(), None
-    except requests.RequestException as e:
-        return None, f"Ошибка при получении заказов: {e}"
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        return None, f"Ошибка получения отзывов: {response.status_code}"
 
-def get_product_info(api_key, nm_id):
-    """
-    Получает информацию о товаре по его артикулу (nmId).
-    """
-    url = f"{BASE_URL}/api/v1/products/{nm_id}"
-    headers = get_headers(api_key)
+    data = response.json()
+    return data.get("feedbacks", []), None
 
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json(), None
-    except requests.RequestException as e:
-        return None, f"Ошибка при получении информации о товаре: {e}"
-
-def get_feedbacks(api_key, nm_id, take=5):
-    """
-    Получает отзывы на товар по его артикулу (nmId).
-    """
-    url = f"{BASE_URL}/api/v1/feedbacks"
-    params = {
-        'imtId': nm_id,  # Артикул товара
-        'take': take      # Количество отзывов
-    }
-    headers = get_headers(api_key)
-
-    try:
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        return response.json(), None
-    except requests.RequestException as e:
-        return None, f"Ошибка при получении отзывов: {e}"
