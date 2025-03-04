@@ -1,71 +1,80 @@
 import requests
 
-# Функция получения данных о заказе по его номеру (orderId)
-def get_product_by_order_id(api_key, order_id):
-    url = f"https://suppliers-api.wildberries.ru/api/v3/orders/{order_id}"
+BASE_URL = "https://marketplace-api.wildberries.ru/api/v3"
+
+def get_order_by_id(api_key, order_id):
+    url = f"{BASE_URL}/orders"
     headers = {"Authorization": api_key}
+    params = {
+        "limit": 1000,
+        "next": 0,
+    }
 
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, params=params)
     if response.status_code != 200:
-        return None, f"Ошибка получения данных о заказе: {response.status_code} - {response.text}"
+        return None, f"Ошибка при получении данных о заказе: {response.status_code}"
 
-    data = response.json()
-    if not data.get("orders"):
-        return None, "Заказ не найден"
+    orders = response.json().get("orders", [])
+    for order in orders:
+        if str(order['id']) == str(order_id):
+            return order, None
 
-    order = data['orders'][0]
-    nm_id = order['skus'][0]['nmId']
+    return None, "Заказ не найден\nУважаемый пользователь, к сожалению, мы не смогли найти заказ по указанным данным.\n\nПроверьте правильность информации и" \
+            "попробуйте еще раз. Если проблема сохраняется, свяжитесь с нашей поддержкой для помощи."
 
-    product_info, error = get_product_info(nm_id)
-    if error:
-        return None, error
+def get_order_status(api_key, order_id):
+    url = f"{BASE_URL}/orders/status"
+    headers = {"Authorization": api_key}
+    payload = {"orders": [int(order_id)]}
 
-    product_info['order_date'] = order['createdAt']  # Дата заказа
-    product_info['imtId'] = order['skus'][0]['imtId']  # добавляем imtId сразу
-    return product_info, None
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code != 200:
+        return None, f"Ошибка получения статуса: {response.status_code}"
 
+    statuses = response.json().get("orders", [])
+    if not statuses:
+        return None, "Статус не найден"
 
-# Функция получения информации о товаре по nmId
+    return statuses[0], None
+
 def get_product_info(nm_id):
     url = "https://card.wb.ru/cards/v2/detail"
     params = {"nm": nm_id}
 
     response = requests.get(url, params=params)
-
     if response.status_code != 200:
-        return None, f"Ошибка получения данных о товаре: {response.status_code}"
+        return None, "Ошибка получения товара"
 
-    data = response.json()
+    products = response.json().get("data", {}).get("products", [])
+    if not products:
+        return None, "Товар не найден"
 
-    if not data.get('data', {}).get('products'):
-        return None, "Товар не найден в Wildberries"
-
-    product = data['data']['products'][0]
-
+    product = products[0]
     return {
-        "nmId": nm_id,
         "name": product['name'],
-        "category": product.get('subjName', 'Неизвестно'),
         "brand": product['brand'],
-        "price": product['salePriceU'] / 100,
-        "old_price": product['priceU'] / 100,
-        "discount": product['sale'],
         "link": f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx"
     }, None
 
-
-def get_feedbacks(imt_id):
+def get_feedbacks(nm_id):
     url = "https://feedbacks-api.wildberries.ru/api/v1/feedbacks"
     params = {
-        "imtId": imt_id,  # теперь передаем корректный параметр
-        "take": 5,
-        "isAnswered": "false"
+        "nmId": nm_id,
+        "take": 50,
+        "skip": 0,
+        "isAnswered": "false",
+        "order": "dateDesc"
     }
 
     response = requests.get(url, params=params)
     if response.status_code != 200:
-        return None, f"Ошибка получения отзывов: {response.status_code}"
+        return None, "Ошибка получения отзывов"
 
-    data = response.json()
-    return data.get("feedbacks", []), None
+    return response.json().get("data", {}).get("feedbacks", []), None
 
+def find_review_for_sku(feedbacks, skus):
+    skus = [str(sku) for sku in skus]  # Приводим к строкам для надежности
+    for feedback in feedbacks:
+        if str(feedback.get('lastOrderShkId')) in skus:
+            return feedback
+    return None
