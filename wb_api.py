@@ -77,7 +77,6 @@ def get_feedbacks(nm_id):
         return response.json().get("data", {}).get("feedbacks", []), None
 
 
-
 def find_review_for_sku(feedbacks, skus):
     skus = {int(sku) for sku in skus}  # Приводим все к числам для уверенности
     for feedback in feedbacks:
@@ -93,8 +92,6 @@ def get_order_with_full_product_info(api_key, order_id):
         return None, error
 
     nm_id = order['nmId']
-
-    print(nm_id)
 
     if USE_MOCK:
         card_info_list = MOCK_CARD_INFO['cards']
