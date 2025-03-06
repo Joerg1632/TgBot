@@ -102,7 +102,7 @@ async def send_cashback_to_admin(user_id, bot):
     message = await bot.send_message(ADMIN_ID, text, parse_mode="Markdown")
     data['admin_message_id'] = message.message_id
 
-    user_data[user_id] = data  # Обязательно обновляем
+    user_data[user_id] = data
 
     await bot.send_message(ADMIN_ID, "Выберите решение по кешбэку:", reply_markup=get_cashback_status_keyboard(application_id))
 

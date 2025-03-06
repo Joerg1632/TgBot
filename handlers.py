@@ -68,7 +68,6 @@ async def process_order_for_cashback(message: types.Message):
         )
         return
 
-    # Теперь review точно есть
     product = {
         'name': review['productDetails']['productName'],
         'brand': review['productDetails']['brandName'],
@@ -117,7 +116,7 @@ async def process_order_for_problem(message: types.Message):
         'step': 'choose_problem',
         'order_id': order_id,
         'product': product,
-        'days_since_sale': days_since_sale  # вот это теперь сохраняется
+        'days_since_sale': days_since_sale
     }
 
     text = (
@@ -142,19 +141,16 @@ async def process_order_for_problem(message: types.Message):
 async def collect_problem_data(message: types.Message):
     user_id = message.from_user.id
 
-    # Создаем структуру, если её нет (или чего-то не хватает)
     if user_id not in user_data:
         user_data[user_id] = {}
 
     data = user_data[user_id]
 
-    # Обязательно гарантируем, что description и photos есть
     if 'description' not in data:
         data['description'] = ''
     if 'photos' not in data:
         data['photos'] = []
 
-    # Заполняем описание и фото
     if message.text:
         data['description'] += message.text.strip() + '\n'
 
@@ -164,7 +160,7 @@ async def collect_problem_data(message: types.Message):
             if message.caption:
                 data['description'] += message.caption.strip() + '\n'
 
-    user_data[user_id] = data  # обновили данные
+    user_data[user_id] = data
 
     await message.reply(
         "✅ Данные добавлены. Можете отправить ещё или нажмите «Завершить заявку».",
