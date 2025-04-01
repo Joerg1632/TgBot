@@ -1,176 +1,114 @@
+"""
+wb_api.py
+
+Методы для работы с Wildberries API — получение информации о заказах, товарах, отзывах и статусах.
+"""
+
 import requests
+from utils import check_cashback_payment
 
 BASE_URL = "https://marketplace-api.wildberries.ru/api/v3"
 CONTENT_API_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list"
 OBJECTS_API_URL = "https://content-api.wildberries.ru/content/v2/object/all"
 PRICES_API_URL = "https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter"
+FEEDBACKS_API_URL = "https://feedbacks-api.wildberries.ru/api/v1/feedbacks"
+WB_ORDERS_API_URL = "https://marketplace-api.wildberries.ru/api/v3/orders"
 
-def get_order_by_id(api_key, order_id):
-    url = f"{BASE_URL}/orders"
+def get_order_by_shk(api_key, shk_id):
+    """
+    Получает заказы с Wildberries и проверяет наличие штрихкода.
+    """
     headers = {"Authorization": api_key}
-    next_cursor = 0
+    next_page = 0
+    limit = 1000
 
     while True:
-        params = {"limit": 1000, "next": next_cursor}
-        response = requests.get(url, headers=headers, params=params)
+        params = {
+            "limit": limit,
+            "next": next_page
+        }
 
+        response = requests.get(WB_ORDERS_API_URL, headers=headers, params=params)
         if response.status_code != 200:
-            return None, f"Ошибка при получении данных о заказе: {response.status_code}"
+            return None, f"Ошибка при получении данных: {response.status_code}"
 
         data = response.json()
         orders = data.get("orders", [])
+
         if not orders:
-            break  # Заказы кончились
+            break  # Если заказов нет, завершаем цикл
 
         for order in orders:
-            if str(order['id']) == str(order_id):
-                return order, None
+            skus = order.get("skus", [])
 
-        next_cursor = data.get("next")  # Получаем следующую страницу
-        if not next_cursor:
-            break  # Достигли конца списка заказов
+            # Приводим все к строкам для корректного сравнения
+            skus_str = [str(sku) for sku in skus]
 
-    return None, (
-        "Заказ не найден\n"
-        "Уважаемый пользователь, к сожалению, мы не смогли найти заказ по указанным данным.\n\n"
-        "Проверьте правильность информации и попробуйте еще раз. "
-        "Если проблема сохраняется, свяжитесь с нашей поддержкой для помощи."
-    )
+            if str(shk_id) in skus_str:
+                return order, None  # Если нашли — возвращаем заказ
 
-def get_order_status(api_key, order_id):
-    url = f"{BASE_URL}/orders/status"
+        next_page = data.get("next", 0)  # Получаем `next`
+        if next_page == 0:
+            break  # Если `next_page` = 0, значит, страниц больше нет
+
+    return None, "Заказ с таким штрихкодом не найден"
+
+
+def get_feedback_by_shk(api_key, shk_id):
+    """
+    Получает единственный отзыв по штрих-коду товара (ShkId).
+    Добавляет проверку, был ли уже выплачен кэшбэк за этот отзыв.
+    """
+    # Проверка на уже выплаченный кэшбэк
+    if check_cashback_payment(shk_id):
+        return None, "Кэшбэк за этот отзыв уже был выплачен ранее"
+
     headers = {"Authorization": api_key}
-    payload = {"orders": [int(order_id)]}
+    try:
+        shk_id = int(shk_id)
+    except ValueError:
+        return None, "❌ Некорректный формат штрихкода!"
 
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code != 200:
-        return None, f"Ошибка получения статуса: {response.status_code}"
-
-    statuses = response.json().get("orders", [])
-    if not statuses:
-        return None, "Статус не найден"
-
-    return statuses[0], None
-
-
-def get_feedbacks(nm_id):
-    url = "https://feedbacks-api.wildberries.ru/api/v1/feedbacks"
-
-    all_feedbacks = []
-
-    for answered in [False, True]:
+    for answered in [False, True]:  # Проверяем как отвеченные, так и неотвеченные отзывы
         params = {
-            "nmId": nm_id,
-            "take": 2500,                     # половина на каждую группу
+            "take": 5000,  # Берем максимум отзывов
             "skip": 0,
-            "isAnswered": str(answered).lower(),  # "true" или "false"
+            "isAnswered": str(answered).lower(),
             "order": "dateDesc"
         }
 
-        response = requests.get(url, params=params)
+        response = requests.get(FEEDBACKS_API_URL, headers=headers, params=params)
         if response.status_code != 200:
-            return None, f"Ошибка получения отзывов (answered={answered}): {response.status_code}"
+            return None, f"❌ Ошибка получения отзывов: {response.status_code}"
 
         feedbacks = response.json().get("data", {}).get("feedbacks", [])
-        all_feedbacks.extend(feedbacks)
 
-    return all_feedbacks, None
+        # Ищем отзыв с нужным `shkId`
+        for feedback in feedbacks:
+            if int(feedback.get('lastOrderShkId', 0)) == shk_id:
+                return feedback, None  # Возвращаем первый найденный отзыв
 
+    return None, "❌ Отзыв по этому штрихкоду не найден!"
 
-def find_review_for_sku(feedbacks, skus):
-    skus = {int(sku) for sku in skus}  # Приводим все к числам для надежности
-    for feedback in feedbacks:
-        if feedback.get('lastOrderShkId') in skus:
-            return feedback
-    return None
+#Для сценария обработки ошибок
+def get_product_info(api_key, nm_id):
+    """
+    Получает информацию о товаре по его `nmId`: название, бренд, цена, категория.
+    """
+    headers = {"Authorization": api_key}
 
-# Для проблем
-def get_order_with_full_product_info(api_key, order_id):
-    order, error = get_order_by_id(api_key, order_id)
-    if error:
-        return None, error
-
-    nm_id = order['nmId']
-
-    card_info, error = get_product_card(api_key, nm_id)
-    if error:
-        return None, error
-
-    product_info_list, error = get_product_prices(nm_id)
-    if error:
-        return None, error
-
-    category_info_list, error = get_category_info()
-    if error:
-        return None, error
-
-    card_info_list = [card_info]
-
-    product_info = None
-    for product in product_info_list:
-        if product.get('nmID') == nm_id:
-            product_info = product
-            break
-
-    if product_info is None:
-        return None, "Product not found in product_info_list"
-
-    size_info = product_info['sizes'][0]  # Берем первую размерную позицию
-
-    subject_id = None
-    for card in card_info_list:
-        if card.get('nmID') == nm_id:
-            subject_id = card.get('subjectID')
-            break
-
-    if subject_id is None:
-        return None, "Subject ID not found in card_info_list"
-
-    category_name = None
-    parent_name = None
-    for category in category_info_list:
-        if category.get('subjectID') == subject_id:
-            category_name = category.get('subjectName')
-            parent_name = category.get('parentName')
-            break
-
-    if not category_name or not parent_name:
-        return None, "Category or parent name not found for subjectID"
-
-    full_product_info = {
-        "name": card_info_list[0].get('title', 'Нет названия'),
-        "brand": card_info_list[0].get('brand', 'Нет бренда'),
-        "category": f"{parent_name} / {category_name}",
-        "price": size_info['discountedPrice'],
-        "old_price": size_info['price'],
-        "discount": product_info['discount'],
-        "link": f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx"
+    payload = {
+        "settings": {
+            "cursor": {"limit": 1},  # Запрашиваем только 1 карточку
+            "filter": {
+                "textSearch": str(nm_id)  # Ищем карточку по nmID
+            }
+        }
     }
 
-    order['product_info'] = full_product_info
-    return order, None
+    # Получаем карточку товара
+    response = requests.post(CONTENT_API_URL, json=payload, headers=headers)
 
-def get_product_prices(nm_id):
-    response = requests.get(PRICES_API_URL, params={"filterNmID": nm_id, "limit": 1})
-    if response.status_code != 200:
-        return None, f"Ошибка получения цен: {response.status_code}"
-
-    product_list = response.json().get("data", {}).get("listGoods", [])
-    if not product_list:
-        return None, "Цены не найдены"
-
-    return product_list, None
-
-def get_category_info():
-    response = requests.get(OBJECTS_API_URL)
-    if response.status_code != 200:
-        return None, f"Ошибка получения категорий: {response.status_code}"
-
-    return response.json().get("data", []), None
-
-def get_product_card(api_key, nm_id):
-    headers = {"Authorization": api_key}
-    response = requests.post(CONTENT_API_URL, json={"settings": {"cursor": {"nmID": [nm_id]}}}, headers=headers)
     if response.status_code != 200:
         return None, f"Ошибка получения карточки товара: {response.status_code}"
 
@@ -178,4 +116,66 @@ def get_product_card(api_key, nm_id):
     if not cards:
         return None, "Карточка товара не найдена"
 
-    return cards[0], None
+    card_info = cards[0]
+
+    # Получаем цену
+    params = {
+        "filterNmID": nm_id,  # Поиск по артикулу WB
+        "limit": 1  # Нам нужен один товар
+    }
+    response = requests.get(PRICES_API_URL, headers=headers, params=params)
+
+    if response.status_code != 200:
+        return None, f"Ошибка получения цены: {response.status_code}"
+
+    data = response.json().get("data", {}).get("listGoods", [])
+    product_price_info = data[0]  # Берем первый найденный товар
+    # Получаем категории товаров
+    params = {
+        "limit": 1000,  # Максимум товаров, можно уменьшить если нужно
+        "locale": "ru",  # Русский язык
+    }
+    response = requests.get(OBJECTS_API_URL, headers=headers, params=params)
+    if response.status_code != 200:
+        print(response.status_code)
+        return None, f"Ошибка получения категорий: {response.status_code}"
+
+    categories = response.json().get("data", [])
+    subject_id = card_info.get("subjectID")
+    category_info = next((c for c in categories if c.get("subjectID") == subject_id), {})
+
+    sizes = product_price_info.get("sizes", [])
+    size_info = sizes[0] if sizes else {}
+
+    return {
+        "name": card_info.get("title", "Нет названия"),
+        "brand": card_info.get("brand", "Нет бренда"),
+        "category": f"{category_info.get('parentName', 'Нет категории')} / {category_info.get('subjectName', 'Нет категории')}",
+        "price": size_info.get("discountedPrice", "Нет цены"),
+        "old_price": size_info.get("price", "Нет старой цены"),
+        "discount": product_price_info.get("discount", "Нет скидки"),
+        "link": f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx"
+    }, None
+
+
+def get_order_with_full_product_info(api_key, shk_id):
+    """
+    Получает информацию о заказе по штрих-коду (ShkId), включая товар и категорию.
+    """
+    feedback, error = get_feedback_by_shk(api_key, shk_id)
+    if error:
+        return None, error
+
+    if not feedback:
+        return None, "Отзывов по данному штрих-коду не найдено."
+    nm_id = feedback["productDetails"]["nmId"]
+
+    product_info, error = get_product_info(api_key, nm_id)
+    print(feedback,product_info)
+    if error:
+        return None, error
+
+    return {
+        "review": feedback,
+        "product_info": product_info
+    }, None
