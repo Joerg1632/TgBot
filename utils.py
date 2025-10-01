@@ -19,11 +19,9 @@ def check_cashback_payment(shk_id):
     Ищет среди всех заявок всех пользователей.
     """
     for user_id, data in user_data.items():
-        # Проверяем текущую заявку пользователя
         if data.get('order_id') == shk_id and data.get('status') == 'реализовано':
             return True
-        
-        # Проверяем архивные заявки пользователя
+
         for order in data.get('previous_orders', []):
             if order.get('order_id') == shk_id and order.get('status') == 'реализовано':
                 return True
@@ -34,15 +32,12 @@ def find_user_by_application_id(application_id, user_data):
     Поиск заявки по application_id (ищет среди текущих и прошлых заявок).
     """
     for user_id, data in user_data.items():
-        # Проверяем текущую заявку
         if data.get('application_id') == application_id:
             return user_id, data
 
-        # Проверяем прошлые заявки
         for old_data in data.get("previous_orders", []):
             if old_data.get('application_id') == application_id:
-                return user_id, old_data  # ✅ Теперь можно закрывать старые заявки!
-
+                return user_id, old_data 
     return None, None
 
 
@@ -54,11 +49,9 @@ def find_cashback_by_shk_id(user_id, shk_id):
     if user_id not in user_data:
         return None
 
-    # Проверяем текущую заявку
     if user_data[user_id].get("order_id") == shk_id:
         return user_data[user_id]
 
-    # Проверяем предыдущие заявки
     for prev_order in user_data[user_id].get("previous_orders", []):
         if prev_order.get("order_id") == shk_id:
             return prev_order
