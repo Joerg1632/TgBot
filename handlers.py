@@ -41,7 +41,7 @@ async def extract_barcode_from_image(photo):
     """
     Извлекает EAN-13 штрихкод из фото с комбинированной обработкой.
     """
-    bot = photo.bot  # Получаем объект бота из photo
+    bot = photo.bot  
     file = await bot.get_file(photo.file_id)
     image_bytes = await bot.download_file(file.file_path)
     image_data = image_bytes.read()
@@ -49,25 +49,23 @@ async def extract_barcode_from_image(photo):
     image = Image.open(io.BytesIO(image_data))
 
     def preprocess_image(image, contrast_factor=1.5, sharpness_factor=2.0, method=1):
-        image = image.convert('L')  # Перевод в ЧБ
+        image = image.convert('L') 
         if method == 1:
-            image = ImageOps.autocontrast(image)  # Авто-контраст
-            image = image.filter(ImageFilter.MedianFilter(size=3))  # Фильтр шума
+            image = ImageOps.autocontrast(image) 
+            image = image.filter(ImageFilter.MedianFilter(size=3))
         enhancer = ImageEnhance.Contrast(image)
-        image = enhancer.enhance(contrast_factor)  # Контраст
+        image = enhancer.enhance(contrast_factor) 
         enhancer = ImageEnhance.Sharpness(image)
-        return enhancer.enhance(sharpness_factor)  # Резкость
+        return enhancer.enhance(sharpness_factor) 
 
-    # Перебираем разные комбинации обработки
     for contrast in [1.5, 2.0, 2.5]:
-        for method in [1, 2]:  # 1 - сложная обработка, 2 - просто контраст
+        for method in [1, 2]: 
             processed_image = preprocess_image(image, contrast_factor=contrast, method=method)
             decoded_objects = decode(processed_image)
             ean13_codes = [obj.data.decode('utf-8') for obj in decoded_objects if obj.type == 'EAN13']
             if ean13_codes:
-                return ean13_codes[0]  # Если нашли - возвращаем сразу
+                return ean13_codes[0] 
 
-    # Если не помогла обработка - пробуем оригинал
     decoded_objects = decode(image)
     ean13_codes = [obj.data.decode('utf-8') for obj in decoded_objects if obj.type == 'EAN13']
     return ean13_codes[0] if ean13_codes else None
@@ -107,13 +105,13 @@ async def send_admin_reply(message: types.Message, bot: Bot):
     reply_text = message.text
 
     try:
-        chat = await bot.get_chat(target_user)  # Получаем информацию о пользователе
+        chat = await bot.get_chat(target_user)
         user_name = chat.username or chat.full_name or f"ID {target_user}"
 
         await bot.send_message(target_user, f"📩 Ответ от поддержки:\n\n{reply_text}")
         await message.answer(f"✅ Ответ отправлен @{user_name}.")
 
-        user_data[ADMIN_ID] = {}  # Сбрасываем состояние
+        user_data[ADMIN_ID] = {}  
     except Exception as e:
         print(f"Ошибка при отправке ответа пользователю {target_user}: {e}")
         await message.answer("⚠ Ошибка при отправке ответа.")
@@ -125,9 +123,9 @@ async def process_order_for_cashback(message: types.Message):
     """
     user_id = message.from_user.id
 
-    if message.text:  # Если сообщение — текст
+    if message.text:
         shk_id = message.text.strip()
-    elif message.photo:  # Если сообщение — фото
+    elif message.photo: 
         shk_id = await extract_barcode_from_image(message.photo[-1])
         print(shk_id)
         if not shk_id:
@@ -142,7 +140,6 @@ async def process_order_for_cashback(message: types.Message):
             )
             return
 
-    # Проверяем, был ли уже выплачен кэшбэк за этот отзыв
     if is_cashback_paid(shk_id):
         await message.answer(
             "⚠️ Кэшбэк за этот отзыв уже был выплачен ранее.\n"
@@ -183,8 +180,7 @@ async def process_order_for_cashback(message: types.Message):
         return
 
     review = feedbacks.get("review", {})
-    
-    # Проверка на наличие текста отзыва
+
     if not review.get('text') and not review.get('pros') and not review.get('cons'):
         await message.answer(
             "❗️ Текст отзыва отсутствует.\nПожалуйста, убедитесь, что вы оставили текстовый отзыв на Wildberries, а затем попробуйте снова.",
@@ -226,10 +222,10 @@ async def process_order_for_problem(message: types.Message):
     """
     user_id = message.from_user.id
 
-    if message.text:  # Если сообщение — текст
+    if message.text: 
         shk_id = message.text.strip()
-    elif message.photo:  # Если сообщение — фото
-        shk_id = await extract_barcode_from_image(message.photo[-1])  # Берем фото наивысшего качества
+    elif message.photo: 
+        shk_id = await extract_barcode_from_image(message.photo[-1]) 
         print(shk_id)
         if not shk_id:
             await message.answer(
@@ -243,7 +239,6 @@ async def process_order_for_problem(message: types.Message):
             )
             return
 
-    # Проверяем, есть ли уже заявка по этому штрихкоду
     existing_cashback = find_cashback_by_shk_id(user_id, shk_id)
     if existing_cashback:
         await message.answer(
@@ -256,7 +251,6 @@ async def process_order_for_problem(message: types.Message):
         )
         return
 
-    # Получаем информацию о заказе
     feedbacks, error = get_order_with_full_product_info(WB_API_KEY, shk_id)
     if error or feedbacks is None:
         await message.answer(
@@ -272,7 +266,6 @@ async def process_order_for_problem(message: types.Message):
         )
         return
 
-    # Проверяем наличие необходимых данных в feedbacks
     if 'review' not in feedbacks or 'product_info' not in feedbacks:
         await message.answer(
             "❗ Ошибка при обработке данных заказа.\n"
@@ -285,16 +278,13 @@ async def process_order_for_problem(message: types.Message):
         )
         return
 
-    # Обработка даты заказа
     try:
-        # Универсальная обработка даты
         order_date_str = feedbacks['review']['lastOrderCreatedAt'].replace('Z', '+00:00')
         if '.' in order_date_str:
-            # Добавляем недостающие нули в дробную часть, если нужно
             parts = order_date_str.split('.')
             if len(parts) == 2:
                 fractional_part, timezone_part = parts[1].split('+')
-                fractional_part = fractional_part.ljust(6, '0')  # Добавляем нули до 6 цифр
+                fractional_part = fractional_part.ljust(6, '0')  
                 order_date_str = f"{parts[0]}.{fractional_part}+{timezone_part}"
         sale_date = datetime.fromisoformat(order_date_str).replace(tzinfo=timezone.utc)
     except (ValueError, KeyError) as e:
@@ -309,13 +299,9 @@ async def process_order_for_problem(message: types.Message):
         )
         return
 
-    # Вычисляем количество прошедших дней
     days_since_sale = (datetime.now(timezone.utc) - sale_date).days
-
-    # Получаем информацию о товаре
     product = feedbacks['product_info']
 
-    # Сохраняем данные пользователя
     user_data[user_id] = {
         'step': 'choose_problem',
         'order_id': shk_id,
@@ -323,7 +309,6 @@ async def process_order_for_problem(message: types.Message):
         'days_since_sale': days_since_sale
     }
 
-    # Формируем текст сообщения
     text = (
         f"📋 Информация о покупке\n"
         f"├📦 Товар: {product.get('name', 'Не указан')}\n"
@@ -336,7 +321,6 @@ async def process_order_for_problem(message: types.Message):
         f"🔗 [Ссылка на товар]({product.get('link', '')})"
     )
 
-    # Отправляем сообщение пользователю
     await message.answer(
         f"{text}\n\nВсе верно? Если да — нажмите «Продолжить».",
         reply_markup=InlineKeyboardMarkup(row_width=2).add(
@@ -404,7 +388,7 @@ async def process_phone_number(message: types.Message):
     Сохраняет номер телефона при заявке на кэшбэк и переводит на ввод ФИО.
     """
     user_data[message.from_user.id]['phone'] = message.text.strip()
-    user_data[message.from_user.id]['step'] = 'enter_name_cashback'  # Новый шаг для кэшбэка
+    user_data[message.from_user.id]['step'] = 'enter_name_cashback'
     await message.answer("👤 Пожалуйста, введите ваше ФИО (полное имя):")
 
 async def collect_name_cashback(message: types.Message):
