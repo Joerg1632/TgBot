@@ -92,7 +92,6 @@ async def handle_help_callback(callback: types.CallbackQuery):
     """
     user_id = callback.from_user.id
 
-    # Определяем, откуда пользователь пришёл
     previous_step = user_data.get(user_id, {}).get('step', 'choose_problem')
 
     back_order_keyboard = InlineKeyboardMarkup().add(
@@ -104,7 +103,6 @@ async def handle_help_callback(callback: types.CallbackQuery):
         reply_markup=back_order_keyboard
     )
 
-    # Сохраняем предыдущий шаг перед входом в поддержку
     user_data[user_id] = {
         'step': 'ask_support',
         'previous_step': previous_step
@@ -155,7 +153,6 @@ async def handle_back_to_previous(callback: types.CallbackQuery):
             )
         )
 
-    # Убираем состояние "ask_support", возвращая пользователя на прошлый шаг
     user_data[user_id]['step'] = previous_step
     await callback.answer()
 
@@ -174,13 +171,11 @@ async def send_cashback_to_admin(user_id, bot):
     """
     Отправка информации о заявке на кэшбэк администратору.
     """
-    # Проверяем, есть ли данные пользователя
     if user_id not in user_data:
         raise ValueError(f"Данные для пользователя {user_id} не найдены.")
 
     data = user_data[user_id]
 
-    # Генерация ID заявки
     application_id = generate_application_id()
     data.update({
         "application_id": application_id,
@@ -190,36 +185,30 @@ async def send_cashback_to_admin(user_id, bot):
         "user_id": user_id
     })
 
-    # Проверяем наличие необходимых данных
     if 'product' not in data or 'review' not in data or 'order_date' not in data:
         raise ValueError("Недостаточно данных для создания заявки.")
 
     product = data['product']
     review = data['review']
 
-    # Обработка даты заказа
     try:
-        # Универсальная обработка даты
         order_date_str = data['order_date'].replace('Z', '+00:00')
         if '.' in order_date_str:
-            # Добавляем недостающие нули в дробную часть, если нужно
             parts = order_date_str.split('.')
             if len(parts) == 2:
                 fractional_part, timezone_part = parts[1].split('+')
-                fractional_part = fractional_part.ljust(6, '0')  # Добавляем нули до 6 цифр
+                fractional_part = fractional_part.ljust(6, '0') 
                 order_date_str = f"{parts[0]}.{fractional_part}+{timezone_part}"
         sale_date = datetime.fromisoformat(order_date_str).replace(tzinfo=timezone.utc)
     except ValueError as e:
         raise ValueError(f"Ошибка при обработке даты заказа: {e}")
 
-    # Вычисляем количество прошедших дней
     days_passed = (datetime.now(timezone.utc) - sale_date).days
     can_pay = "ДА" if days_passed >= 14 else "НЕТ"
 
-    # Формируем текст сообщения
     text = (
         f"📋 Заявка на кэшбэк №{application_id}\n"
-        f"👤 ФИО: {data.get('name', 'Не указано')}\n"  # Добавлено ФИО
+        f"👤 ФИО: {data.get('name', 'Не указано')}\n"  
         f"📦 Номер заказа: {data.get('order_id', 'Не указан')}\n"
         f"🏷️ Товар: {product.get('name', 'Не указан')} ({product.get('brand', 'Не указан')})\n"
         f"⭐️ Оценка клиента: {review.get('productValuation', 'Не указана')}⭐️\n"
@@ -236,23 +225,15 @@ async def send_cashback_to_admin(user_id, bot):
         f"📲 [Связаться с клиентом](tg://user?id={user_id})"
     )
 
-    # Отправляем сообщение администратору
     message = await bot.send_message(ADMIN_ID, text, parse_mode="Markdown")
-
-    # Сохраняем ID сообщения администратора
     data['admin_message_id'] = message.message_id
 
-    # Архивируем предыдущие заявки, если они есть
     if "previous_orders" not in data:
         data["previous_orders"] = []
 
-    # Добавляем текущую заявку в архив
     data["previous_orders"].append(data.copy())
-
-    # Обновляем данные пользователя
     user_data[user_id] = data
 
-    # Отправляем клавиатуру для выбора решения
     await bot.send_message(ADMIN_ID, "Выберите решение по кэшбэку:", reply_markup=get_cashback_status_keyboard(application_id))
 
 
@@ -343,13 +324,10 @@ async def change_cashback_status(callback: types.CallbackQuery, bot):
         return
 
     data['status'] = status
-    
-    # Если кэшбэк выплачен - сохраняем в историю
     if status == "реализовано":
         save_paid_cashback(data['order_id'])
     text = f"📋 Заявка на кэшбэк (обновлено)\n\n{data['product']['name']}\n🔖 Статус: *{status}*"
 
-    # Обновляем сообщение у админа
     await bot.edit_message_text(text, ADMIN_ID, data['admin_message_id'], parse_mode="Markdown")
 
     messages = {
@@ -419,16 +397,12 @@ async def process_bank_choice(callback: types.CallbackQuery, bot: Bot):
 
     print("До:")
     print(user_data[user_id].get("previous_orders", []))
-
-    # ✅ Создаём копию текущей заявки (без ссылок на вложенные структуры)
     old_order = copy.deepcopy(user_data[user_id])
     old_order.pop("previous_orders", None)
 
-    # ✅ Проверяем, добавлена ли заявка в архив
     if "previous_orders" not in user_data[user_id]:
         user_data[user_id]["previous_orders"] = []
 
-    # ✅ Если заявка ещё не добавлена, добавляем
     if user_data[user_id]["previous_orders"] and user_data[user_id]["previous_orders"][-1] == old_order:
         print("⏭️ Заявка уже есть в архиве, не дублируем!")
     else:
@@ -437,17 +411,16 @@ async def process_bank_choice(callback: types.CallbackQuery, bot: Bot):
     print("После:")
     print(user_data[user_id]["previous_orders"])
 
-    # ✅ Перезаписываем user_data[user_id], но оставляем previous_orders
-    previous_orders_copy = user_data[user_id]["previous_orders"]  # Сохраняем прошлые заявки
+    previous_orders_copy = user_data[user_id]["previous_orders"] 
 
     user_data[user_id] = {
         'step': "enter_order",
         'previous_step': "bank_choice",
-        'previous_orders': previous_orders_copy  # Используем уже обновлённый архив заявок
+        'previous_orders': previous_orders_copy
     }
 
     print("После обновления previous_orders:")
-    print(user_data[user_id]["previous_orders"])  # Проверяем, что заявка не дублируется
+    print(user_data[user_id]["previous_orders"]) 
 
     await callback.message.answer(
         "✅ Заявка отправлена администратору! Ожидайте обратной связи.\n\n"
