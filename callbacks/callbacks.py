@@ -11,9 +11,9 @@ from config import ADMIN_ID
 import copy
 from state import user_data
 from utils import generate_application_id, find_user_by_application_id
-from keyboards import main_inline_keyboard, back_to_main_keyboard, complaint_types, get_cashback_status_keyboard, get_navigation_keyboard
+from keyboards.keyboards import main_inline_keyboard, back_to_main_keyboard, complaint_types, get_cashback_status_keyboard, get_navigation_keyboard
 from datetime import datetime, timezone
-from cashback_history import save_paid_cashback
+from services.cashback_history import save_paid_cashback
 async def handle_menu(callback: types.CallbackQuery):
     """
     Обработка выбора в главном меню.

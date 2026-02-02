@@ -7,15 +7,15 @@ handlers.py
 from aiogram import types, Dispatcher, Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import ADMIN_ID, WB_API_KEY
-from keyboards import main_inline_keyboard, bank_keyboard
+from keyboards.keyboards import main_inline_keyboard, bank_keyboard
 from utils import find_cashback_by_shk_id
-from wb_api import get_order_with_full_product_info
+from services.wb_api import get_order_with_full_product_info
 from state import user_data
 from pyzbar.pyzbar import decode
 from PIL import Image, ImageOps, ImageEnhance, ImageFilter
 import io
 from datetime import datetime, timezone
-from cashback_history import is_cashback_paid
+from services.cashback_history import is_cashback_paid
 
 async def send_welcome(message: types.Message):
     """

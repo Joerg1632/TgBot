@@ -8,7 +8,7 @@ import json
 import os
 from typing import List
 
-HISTORY_FILE = "paid_cashbacks.json"
+HISTORY_FILE = "../paid_cashbacks.json"
 
 def load_paid_cashbacks() -> List[str]:
     """Загружает список уже выплаченных кэшбэков из файла"""

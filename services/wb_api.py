@@ -5,7 +5,7 @@ wb_api.py
 """
 
 import requests
-from utils import check_cashback_payment
+from utils.utils import check_cashback_payment
 
 BASE_URL = "https://marketplace-api.wildberries.ru/api/v3"
 CONTENT_API_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list"
